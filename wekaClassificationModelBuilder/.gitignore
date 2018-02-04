@@ -1,3 +1,6 @@
 output/
 code/*.class
 code/weka.jar
+
+.idea
+/build
