@@ -81,4 +81,4 @@ for root, dirs, files in natsorted(os.walk(PATH)):
             df = pd.DataFrame({"seq": x, "rssi": y, "received": z})
             # Keep colum order
             df = df[['seq', 'rssi', 'received']]
-            df.to_csv(csv_file, index=False, header=True, cols=['seq', 'rssi', 'received'])
+            df.to_csv(csv_file, index=False, header=True, columns=['seq', 'rssi', 'received'])

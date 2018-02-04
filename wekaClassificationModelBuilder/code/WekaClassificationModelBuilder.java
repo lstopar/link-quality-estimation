@@ -9,25 +9,12 @@ import weka.classifiers.trees.J48;
 import weka.filters.unsupervised.attribute.Remove;
 import weka.classifiers.Evaluation;
 import weka.filters.Filter;
-import weka.filters.unsupervised.attribute.Remove;
 import weka.core.Attribute;
 import weka.filters.unsupervised.attribute.SortLabels;
 import weka.filters.MultiFilter;
 
-import java.util.Arrays;
-import java.util.Set;
-import java.util.HashSet;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.stream.IntStream;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Comparator;
-import java.util.LinkedList;
-import java.util.ListIterator;
 
 import java.io.PrintWriter;
 
@@ -64,17 +51,17 @@ class Util {
 	 * @param	originalSet	the input set
 	 * @return				power set of the specified original set
 	 */
-	public static Set<Set<Integer>> powerSet(Set<Integer> originalSet) {
-		Set<Set<Integer>> sets = new HashSet<Set<Integer>>();
+	public static <T> Set<Set<T>> powerSet(Set<T> originalSet) {
+		Set<Set<T>> sets = new HashSet<Set<T>>();
 		if (originalSet.isEmpty()) {
-			sets.add(new HashSet<Integer>());
+			sets.add(new HashSet<T>());
 			return sets;
 		}
-		List<Integer> list = new ArrayList<Integer>(originalSet);
-		Integer head = list.get(0);
-		Set<Integer> rest = new HashSet<Integer>(list.subList(1, list.size()));
-		for(Set<Integer> set : powerSet(rest)) {
-			Set<Integer> newSet = new HashSet<Integer>();
+		List<T> list = new ArrayList<T>(originalSet);
+		T head = list.get(0);
+		Set<T> rest = new HashSet<T>(list.subList(1, list.size()));
+		for(Set<T> set : powerSet(rest)) {
+			Set<T> newSet = new HashSet<T>();
 			newSet.add(head);
 			newSet.addAll(set);
 			sets.add(newSet);
@@ -125,7 +112,10 @@ public class WekaClassificationModelBuilder {
 	Integer classIndex;
 	Integer numberOfUnwantedAttributesBeforeClass;
 	List<String> unwantedAttributes;
-	
+	List<Set<String>> attributeNameGroups;
+	Set<String> unwantedAttrNames = new HashSet<>();
+	Map<String, Integer> attributeNameToIndexH = new HashMap<>();
+
 	/**
 	 * Constructor.
 	 *
@@ -133,11 +123,14 @@ public class WekaClassificationModelBuilder {
 	 * @param	outputDirectory		path to which model files should be output
 	 * @param	unwantedAttributes 	names of attributes that should be removed before building models
 	 */
-	WekaClassificationModelBuilder(String inputFileName, String outputDirectory, List<String> unwantedAttributes) {
-		
+	WekaClassificationModelBuilder(String inputFileName, String outputDirectory, List<String> unwantedAttributes,
+								   List<Set<String>> attributeGroups) {
 		this.inputFileName = inputFileName;
 		this.outputDirectory = outputDirectory;
 		this.unwantedAttributes = unwantedAttributes;
+		this.attributeNameGroups = attributeGroups;
+
+		System.out.println("input file `" + inputFileName + "`, output file `" + outputDirectory + "`");
 
 		attributeIndices = new HashSet<Integer>();
 		rand = new Random(1);
@@ -164,14 +157,49 @@ public class WekaClassificationModelBuilder {
 		setClassAndUnwanted();
 	}
 
+	private void addToGroups(String attributeName) {
+		boolean isInGroups = false;
+		for (int groupN = 0; groupN < attributeNameGroups.size(); ++groupN) {
+			Set<String> group = attributeNameGroups.get(groupN);
+			if (group.contains(attributeName)) {
+				isInGroups = true;
+				break;
+			}
+		}
+		if (!isInGroups) {
+			attributeNameGroups.add(new HashSet<>(Arrays.asList(attributeName)));
+		}
+	}
+
+	private void removeFromGroups(String attributeName) {
+		for (int groupN = 0; groupN < attributeNameGroups.size(); ++groupN) {
+			Set<String> group = attributeNameGroups.get(groupN);
+			if (group.contains(attributeName)) {
+				group.remove(attributeName);
+				if (group.isEmpty()) {
+					attributeNameGroups.remove(groupN);
+				}
+				break;
+			}
+		}
+	}
+
 	/**
 	 * Finds index of 'class' attribute and indices of unwanted attributes and sets the appropriate filters.
 	 */
 	private void setClassAndUnwanted() {
-		
+
+	    System.out.println("unwanted attributes: " + unwantedAttributes.toString());
+
+
+	    int outputAttrN = 0;
 		for(int attributeIndex = 0; attributeIndex < numberOfAttributes; attributeIndex++) {
 			attribute = data.attribute(attributeIndex);
+
+			System.out.println("processing attribute `" + attribute.name()  + "`");
+
 			if(attribute.name().equals("class")) {
+                System.out.println("skipping class attribute");
 				classIndex = attributeIndex + 1;
 				continue;
 			}
@@ -182,6 +210,12 @@ public class WekaClassificationModelBuilder {
 				if(!unwantedAttributesArgument.equals(""))
 					unwantedAttributesArgument += ",";
 				unwantedAttributesArgument += Integer.toString(attributeIndex + 1);
+				removeFromGroups(attribute.name());
+			} else {
+			    attributeNameToIndexH.put(attribute.name(), outputAttrN);
+				addToGroups(attribute.name());
+				System.out.println("will use attribute `" + attribute.name() + "`");
+				++outputAttrN;
 			}
 		}
 
@@ -232,7 +266,35 @@ public class WekaClassificationModelBuilder {
 		IntStream.range(0, numberOfAttributes - numberOfUnwantedAttributes).forEach(n -> {
 			attributeIndices.add(n);
 		});
-		for(Set<Integer> option: Util.powerSet(attributeIndices)) {
+
+		Set<Integer> groupIndices = new HashSet<>();
+		List<Integer> groupOffsets = new ArrayList<>();
+		List<Integer> groupSizes = new ArrayList<>();
+		int offset = 0;
+		for (int groupN = 0; groupN < attributeNameGroups.size(); ++groupN) {
+		    groupOffsets.add(offset);
+		    groupSizes.add(attributeNameGroups.get(groupN).size());
+		    groupIndices.add(groupN);
+		    offset += attributeNameGroups.get(groupN).size();
+		}
+
+		System.out.println("total attributes: " + attributeIndices.size());
+		System.out.println("iterativelly selecting all " + (1 << (groupIndices.size())) + " combinations of attributes");
+
+		int iterN = 0;
+		for (Set<Set<String>> groupSelection : Util.powerSet(new HashSet<>(attributeNameGroups))) {
+			++iterN;
+			System.out.println("iteration: " + iterN);
+
+			Set<Integer> option = new HashSet<>();
+			for (Set<String> group : groupSelection) {
+			    for (String attrName : group) {
+			        int attrN = attributeNameToIndexH.get(attrName);
+			        option.add(attrN);
+				}
+			}
+
+			System.out.println("option indices: " + option.toString());
 
 			// Ignore the option if it contains the class index.
 			if(option.contains(correctedClassIndex) || option.size() >= maxSize) {
@@ -299,7 +361,7 @@ public class WekaClassificationModelBuilder {
 			// Output the current model to a file.
 			if(outputToFile) {
 				try {
-					PrintWriter writer = new PrintWriter("../output/" + usedAttributes + ".txt", "UTF-8");
+					PrintWriter writer = new PrintWriter(outputDirectory + "/" + usedAttributes.replace(' ', '-') + ".txt", "UTF-8");
 					writer.println("Best: " + topTreeFeature);
 					writer.println(confusionMatrix);
 					writer.println(summary);

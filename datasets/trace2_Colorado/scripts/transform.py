@@ -113,4 +113,4 @@ for link_id in packets_in_link.keys():
     columns = ['seq', 'rssi', 'received']
     df = pd.DataFrame({"seq": seq_list, "rssi": rssi_list, "received": received_list})
     df = df[columns]
-    df.to_csv(file_path_name, index=False, header=True, cols=columns)
+    df.to_csv(file_path_name, index=False, header=True, columns=columns)

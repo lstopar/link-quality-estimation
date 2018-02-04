@@ -366,7 +366,7 @@ if __name__ == "__main__":
     data = import_datasets_experiments(datasets, experiments)
 
     # TODO: filter by links/experiments
-    pass
+    # pass
     
     # calculate other features (calculate new attributes, instant RSSI, avg RSSI, std, PRR, ch. memory, ...)
     print("Calculate other features? (y/n)")
@@ -420,7 +420,7 @@ if __name__ == "__main__":
             print("Categories not defined. No default label.")
     
     # TODO: perhaps do more filtering?
-    pass
+    # pass
 
     # select the output format (LINK, EXPERIMENT, DATASET, ALL)
     # output to arff files
